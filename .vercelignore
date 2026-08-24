@@ -1,0 +1,17 @@
+node_modules
+.next
+.vinext
+.output
+dist
+build
+coverage
+output
+outputs
+work
+.playwright-cli
+.wrangler
+.vercel
+.env*
+*.tsbuildinfo
+*.log
+.DS_Store
