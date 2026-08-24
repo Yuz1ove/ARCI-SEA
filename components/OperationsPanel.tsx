@@ -26,14 +26,14 @@ export function OperationsPanel({phase,snapshot,policySnapshot,stageProgress,pre
     <div className="panel-body">
       <div className="panel-summary"><p>{snapshot.summary}</p><ProvenanceBadge data={snapshot.events[0]?.provenance??snapshot.metrics.ordersAtRisk} compact/></div>
       <DecisionTrace phase={phase} snapshot={snapshot}/>
-      {deciding&&<DecisionInputs snapshot={snapshot}/>} 
-      {deciding&&<EvaluationPipeline snapshot={policySnapshot} stageProgress={stageProgress}/>} 
-      {(phase==='NORMAL'||phase==='SURGE')&&<StatusOverview snapshot={snapshot}/>} 
-      {(phase==='WAREHOUSE_OVERLOAD'||phase==='DEGRADED'||phase==='SECOND_FAILURE')&&<EventList snapshot={snapshot}/>} 
-      {deciding&&<AdaptivePolicyCompact snapshot={policySnapshot} stageProgress={stageProgress}/>} 
-      {deciding&&<DecisionRows candidates={candidates} policySnapshot={policySnapshot} activeRoute={currentRoute} stageProgress={stageProgress} onPreview={onPreview} onSelect={onSelect}/>} 
-      {(executing||verifying)&&<ExecutionStatus phase={phase} progress={stageProgress} snapshot={snapshot}/>} 
-      {phase==='SECOND_FAILURE'&&<ConstraintShift phase={phase} progress={stageProgress}/>} 
+      {deciding&&<DecisionInputs snapshot={snapshot}/>}
+      {deciding&&<EvaluationPipeline snapshot={policySnapshot} stageProgress={stageProgress}/>}
+      {(phase==='NORMAL'||phase==='SURGE')&&<StatusOverview snapshot={snapshot}/>}
+      {(phase==='WAREHOUSE_OVERLOAD'||phase==='DEGRADED'||phase==='SECOND_FAILURE')&&<EventList snapshot={snapshot}/>}
+      {deciding&&<AdaptivePolicyCompact snapshot={policySnapshot} stageProgress={stageProgress}/>}
+      {deciding&&<DecisionRows candidates={candidates} policySnapshot={policySnapshot} activeRoute={currentRoute} stageProgress={stageProgress} onPreview={onPreview} onSelect={onSelect}/>}
+      {(executing||verifying)&&<ExecutionStatus phase={phase} progress={stageProgress} snapshot={snapshot}/>}
+      {phase==='SECOND_FAILURE'&&<ConstraintShift phase={phase} progress={stageProgress}/>}
     </div>
     <div className="panel-action">
       {phase==='DEGRADED'&&<button type="button" onClick={onExecute}>建立並比較候選方案 <span>→</span></button>}
