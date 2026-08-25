@@ -1,5 +1,6 @@
 import { describe,expect,it } from 'vitest';
-import { phaseOrder,primaryCandidates,snapshots } from './scenario';
+import { decisionScenarios,evaluateScenario,taiwanMarket } from '../domain/decision-engine';
+import { phaseOrder,snapshots } from './scenario';
 
 describe('seven-node national fulfillment model',()=>{
   it('aggregates the three main-island and four offshore nodes in every phase',()=>{
@@ -31,12 +32,9 @@ describe('seven-node national fulfillment model',()=>{
     expect(read('RECOVERED').capacity).toBeGreaterThan(0);
   });
 
-  it('penalizes a mainland-only plan and selects the offshore-buffer plan',()=>{
-    const selected=primaryCandidates.find(candidate=>candidate.recommended)!;
-    const blocked=primaryCandidates.find(candidate=>candidate.id==='route-a')!;
-    expect(selected.offshoreImpact.slaDelta).toBeGreaterThan(0);
-    expect(selected.offshoreImpact.risk).toBe('低');
-    expect(blocked.offshoreImpact.slaDelta).toBeLessThan(0);
-    expect(blocked.reason).toContain('離島');
+  it('keeps every offshore node in the generated and selected engine policies',()=>{
+    const result=evaluateScenario(decisionScenarios.compound,taiwanMarket,{samples:40});
+    for(const candidate of result.candidates) expect(candidate.servedNodeIds).toEqual(expect.arrayContaining(['penghu','kinmen','matsu','green-island']));
+    expect(result.selectedPolicy.candidate.servedNodeIds).toEqual(expect.arrayContaining(['penghu','kinmen','matsu','green-island']));
   });
 });

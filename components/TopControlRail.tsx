@@ -9,7 +9,10 @@ export function TopControlRail({state,status,onPlay,onPause,onResume,onReset,onP
     <div className="brand-block"><span className="brand-mark" aria-hidden="true"><i/><i/><i/></span><div><strong>ARCI</strong><small>Autonomous Resilient Commerce Intelligence</small></div></div>
     <div className="scenario-title"><span className={`live-dot live-${state.phase.toLowerCase()}`}/><div><small>情境模擬｜非即時營運資料</small><strong>雙 9 大促物流壓力測試</strong></div><span className="phase-status">{status}</span></div>
     <div className="rail-actions">
-      <AppRouteLink className="policy-nav-link" href="/adaptive-policy">自適應決策策略 <span>→</span></AppRouteLink>
+      <nav className="mode-switch" aria-label="產品模式">
+        <span className="mode-link is-active" aria-current="page">即時決策 Demo</span>
+        <AppRouteLink className="mode-link policy-nav-link" href="/adaptive-policy">自適應決策策略 <span>→</span></AppRouteLink>
+      </nav>
       <span className="keyboard-hint">Space 暫停 · ← → 切幕 · R 重播</span>
       <div className="presentation-controls" aria-label="簡報控制"><button type="button" onClick={onPrevious} aria-label="上一階段">←</button><button type="button" onClick={onNext} aria-label="下一階段">→</button></div>
       <button className="ghost-button" type="button" onClick={onReset}>重播</button>

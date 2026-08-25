@@ -1,11 +1,12 @@
-import { primaryCandidates, provenance, replanCandidates, snapshots } from '../../simulation/scenario';
+import { provenance, snapshots } from '../../simulation/scenario';
+import { decisionCandidatesFromEvaluation, engineEvaluationForPhase, projectEngineSnapshot } from '../../simulation/enterpriseAdapter';
 import type { ARCIInferenceProvider, CommerceDataProvider, ProviderStatus, ScenarioDataProvider, TrafficDataProvider, WeatherDataProvider } from './types';
 
 const status=(value:ProviderStatus):ProviderStatus=>value;
 
 export const scenarioProvider:ScenarioDataProvider={
   status:status({id:'scenario',name:'ARCI Scenario Dataset',status:'scenario',displayStatus:'SCENARIO',lastUpdated:'情境 20:48',description:'雙 9 大促的可重現 Demo 訂單、SKU、節點與事件資料。',dataTypes:['訂單量','SKU 分區','履約節點'],cadence:'階段切換時',integration:'可替換為已授權商務資料的相同 snapshot schema',provenance:provenance.scenario}),
-  getSnapshot:phase=>snapshots[phase],
+  getSnapshot:phase=>projectEngineSnapshot(snapshots[phase],engineEvaluationForPhase(phase),phase,1),
 };
 
 export const commerceProvider:CommerceDataProvider={
@@ -26,7 +27,7 @@ export const weatherProvider:WeatherDataProvider={
 export const inferenceProvider:ARCIInferenceProvider={
   status:status({id:'inference',name:'ARCI Decision Engine',status:'derived',displayStatus:'DERIVED',lastUpdated:'情境 20:48',description:'恢復時間、SLA、成本與風險訂單均由情境輸入推估，不是物流商即時容量。',dataTypes:['恢復時間','SLA 推估','成本變化'],cadence:'每次候選集重算',integration:'可由 ArciApiDecisionRuntime 替換現行 SimulatedDecisionRuntime',provenance:provenance.projection}),
   async evaluate(phase){
-    return ['SECOND_FAILURE','REPLANNING','RECOVERED'].includes(phase)?replanCandidates:primaryCandidates;
+    return decisionCandidatesFromEvaluation(engineEvaluationForPhase(phase));
   },
 };
 

@@ -2,14 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { SimulatedDecisionRuntime } from './runtime';
 
 describe('SimulatedDecisionRuntime',()=>{
-  it('selects Route B for the first incident',async()=>{
+  it('returns one engine-selected feasible route for the first incident',async()=>{
     const candidates=await new SimulatedDecisionRuntime().evaluate('DECIDING');
-    expect(candidates.find(candidate=>candidate.recommended)?.id).toBe('route-b');
+    const selected=candidates.find(candidate=>candidate.recommended);
+    expect(selected).toBeDefined();
+    expect(selected!.feasibility).toBeGreaterThan(0);
   });
 
-  it('does not reuse failed Route B after the second shock',async()=>{
-    const candidates=await new SimulatedDecisionRuntime().evaluate('REPLANNING');
-    expect(candidates.find(candidate=>candidate.recommended)?.id).toBe('route-c');
-    expect(candidates.find(candidate=>candidate.recommended)?.route).not.toContain('Carrier B');
+  it('reselects a different feasible route after the second shock',async()=>{
+    const runtime=new SimulatedDecisionRuntime();
+    const first=(await runtime.evaluate('DECIDING')).find(candidate=>candidate.recommended)!;
+    const replanned=(await runtime.evaluate('REPLANNING')).find(candidate=>candidate.recommended)!;
+    expect(replanned.id).not.toBe(first.id);
+    expect(replanned.feasibility).toBeGreaterThan(0);
   });
 });

@@ -1,16 +1,13 @@
 'use client';
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { getPolicySnapshot, type PolicyScenarioId } from '@/domain/policy';
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import type { PolicyScenarioId } from '@/domain/policy';
+import type { ScenarioEvaluation } from '@/domain/decision-engine';
 import { useCommerceSimulation } from '@/hooks/useCommerceSimulation';
-import { candidatesForPhase } from '@/simulation/scenario';
+import { decisionCandidatesFromEvaluation, decisionScenarioForPhase, engineEvaluationForPhase, projectEngineSnapshot } from '@/simulation/enterpriseAdapter';
 import type { SimulationPhase } from '@/simulation/types';
 
-const scenarioForPhase = (phase:SimulationPhase):PolicyScenarioId => {
-  if (phase==='NORMAL'||phase==='SURGE') return 'normal-operations';
-  if (phase==='SECOND_FAILURE'||phase==='REPLANNING'||phase==='UPDATED_EXECUTION'||phase==='RECOVERED') return 'warehouse-overload';
-  return 'traffic-disruption';
-};
+const scenarioForPhase = (phase:SimulationPhase):PolicyScenarioId => decisionScenarioForPhase(phase);
 
 const phaseForScenario:Record<PolicyScenarioId,SimulationPhase>={
   'normal-operations':'NORMAL',
@@ -20,14 +17,14 @@ const phaseForScenario:Record<PolicyScenarioId,SimulationPhase>={
 
 type SimulationContextValue=ReturnType<typeof useCommerceSimulation> & {
   scenarioId:PolicyScenarioId;
-  policySnapshot:ReturnType<typeof getPolicySnapshot>;
+  engineEvaluation:ScenarioEvaluation;
   sharedScenario:{
     scenarioId:PolicyScenarioId;
     scenarioType:string;
     activeConstraints:string[];
-    signals:ReturnType<typeof getPolicySnapshot>['signals'];
-    decisionWeights:ReturnType<typeof getPolicySnapshot>['adaptiveWeights'];
-    candidates:ReturnType<typeof getPolicySnapshot>['candidateRankingAfter'];
+    signals:ScenarioEvaluation['state'];
+    decisionWeights:ScenarioEvaluation['adaptiveWeights'];
+    candidates:ScenarioEvaluation['evaluations'];
     selectedCandidateId:string;
     decisionScore:number;
     selectedPlan:string|null;
@@ -37,41 +34,60 @@ type SimulationContextValue=ReturnType<typeof useCommerceSimulation> & {
     serviceLevel:number;
     outcome:{slaPercent:number;ordersAtRisk:number;averageDelayHours:number};
     policyVersion:string;
+    p50:number;
+    p90:number;
+    decisionConfidence:number;
+    governance:string;
+    counterfactual:ReturnType<typeof engineEvaluationForPhase>['counterfactual'];
   };
   selectScenario:(scenarioId:PolicyScenarioId)=>void;
+  applyIntelligenceEvaluation:(evaluation:ScenarioEvaluation)=>void;
+  resetIntelligenceEvaluation:()=>void;
 };
 
 const ScenarioStateContext=createContext<SimulationContextValue|null>(null);
 
 export function ScenarioStateProvider({children}:{children:ReactNode}){
   const simulation=useCommerceSimulation();
+  const [intelligenceEvaluation,setIntelligenceEvaluation]=useState<ScenarioEvaluation|null>(null);
   const scenarioId=scenarioForPhase(simulation.state.phase);
-  const policySnapshot=useMemo(()=>getPolicySnapshot(scenarioId),[scenarioId]);
-  const selectedPlan=simulation.state.selectedRoute??candidatesForPhase(simulation.state.phase).find(item=>item.recommended)?.id??simulation.snapshot.activeRoute;
+  const baselineEvaluation=useMemo(()=>engineEvaluationForPhase(simulation.state.phase),[simulation.state.phase]);
+  const engineEvaluation=intelligenceEvaluation??baselineEvaluation;
+  const snapshot=useMemo(()=>projectEngineSnapshot(simulation.snapshot,engineEvaluation,simulation.state.phase,simulation.stageProgress),[engineEvaluation,simulation.snapshot,simulation.stageProgress,simulation.state.phase]);
+  const candidates=useMemo(()=>decisionCandidatesFromEvaluation(engineEvaluation),[engineEvaluation]);
+  const selectedPlan=simulation.state.selectedRoute??candidates.find(item=>item.recommended)?.id??snapshot.activeRoute;
   const sharedScenario=useMemo(()=>({
     scenarioId,
-    scenarioType:policySnapshot.classification,
-    activeConstraints:policySnapshot.hardConstraints.filter(item=>item.active).map(item=>item.id),
-    signals:policySnapshot.signals,
-    decisionWeights:{...policySnapshot.adaptiveWeights},
-    candidates:policySnapshot.candidateRankingAfter,
-    selectedCandidateId:policySnapshot.selectedCandidateId,
-    decisionScore:policySnapshot.candidateRankingAfter.find(item=>item.candidateId===policySnapshot.selectedCandidateId)?.totalScore??0,
+    scenarioType:engineEvaluation.scenario.id,
+    activeConstraints:[...new Set(engineEvaluation.evaluations.flatMap(item=>item.constraints.violations.map(violation=>violation.code)))],
+    signals:engineEvaluation.state,
+    decisionWeights:{...engineEvaluation.adaptiveWeights},
+    candidates:engineEvaluation.evaluations,
+    selectedCandidateId:engineEvaluation.selectedPolicy.candidate.id,
+    decisionScore:engineEvaluation.selectedPolicy.riskAdjustedScore,
     selectedPlan,
     executionState:simulation.state.phase,
-    replanCycle:policySnapshot.context.cycle,
-    replanReason:simulation.snapshot.trace.reason,
-    serviceLevel:simulation.snapshot.onTimeRate,
-    outcome:{slaPercent:simulation.snapshot.onTimeRate,ordersAtRisk:simulation.snapshot.ordersAtRisk,averageDelayHours:simulation.snapshot.averageDelayHours},
-    policyVersion:policySnapshot.version,
-  }),[policySnapshot,scenarioId,selectedPlan,simulation.snapshot,simulation.state.phase]);
+    replanCycle:engineEvaluation.decisionRecord.trigger==='SECOND_EVENT_REPLAN'?2:1,
+    replanReason:snapshot.trace.reason,
+    serviceLevel:snapshot.onTimeRate,
+    outcome:{slaPercent:snapshot.onTimeRate,ordersAtRisk:snapshot.ordersAtRisk,averageDelayHours:snapshot.averageDelayHours},
+    policyVersion:'ARCI-EI-V4',
+    p50:engineEvaluation.selectedPolicy.uncertainty.p50,
+    p90:engineEvaluation.selectedPolicy.uncertainty.p90,
+    decisionConfidence:engineEvaluation.confidence.value,
+    governance:engineEvaluation.governance.mode,
+    counterfactual:engineEvaluation.counterfactual,
+  }),[engineEvaluation,scenarioId,selectedPlan,snapshot,simulation.state.phase]);
   const value=useMemo<SimulationContextValue>(()=>({
     ...simulation,
+    snapshot,
     scenarioId,
-    policySnapshot,
+    engineEvaluation,
     sharedScenario,
-    selectScenario:(next)=>simulation.goTo(phaseForScenario[next]),
-  }),[policySnapshot,scenarioId,sharedScenario,simulation]);
+    selectScenario:(next)=>{setIntelligenceEvaluation(null);simulation.goTo(phaseForScenario[next])},
+    applyIntelligenceEvaluation:setIntelligenceEvaluation,
+    resetIntelligenceEvaluation:()=>setIntelligenceEvaluation(null),
+  }),[engineEvaluation,scenarioId,sharedScenario,simulation,snapshot]);
   return <ScenarioStateContext.Provider value={value}>{children}</ScenarioStateContext.Provider>;
 }
 

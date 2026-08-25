@@ -14,6 +14,8 @@ describe('scenario provider fallback boundary',()=>{
     for(const phase of phaseOrder){
       const snapshot=scenarioProvider.getSnapshot(phase);
       expect(Object.values(snapshot.metrics).every(metric=>metric.sourceType&&metric.sourceLabel&&!metric.isLive)).toBe(true);
+      expect(snapshot.orderRate).toBe(snapshot.networkNodes.reduce((sum,node)=>sum+node.orderRate,0));
+      expect(snapshot.metrics.orderRate.value).toBe(snapshot.orderRate);
     }
   });
 

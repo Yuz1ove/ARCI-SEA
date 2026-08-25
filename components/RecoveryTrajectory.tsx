@@ -1,11 +1,15 @@
-import { phaseOrder,serviceRecoverySeries } from '@/simulation/scenario';
+import { phaseOrder,serviceRecoverySeries as recoveryMetadata } from '@/simulation/scenario';
+import { getDemoDecisionEvaluation } from '@/domain/decision-engine';
 import { clamp01 } from '@/simulation/timeline';
 import type { SimulationPhase } from '@/simulation/types';
 
 const WIDTH=1000;
 const HEIGHT=250;
 const PLOT={left:62,right:974,top:30,bottom:190};
-const SLA_MIN=88;
+const normal=getDemoDecisionEvaluation('normal-operations'),surge=getDemoDecisionEvaluation('demand-surge'),traffic=getDemoDecisionEvaluation('traffic-only'),compound=getDemoDecisionEvaluation('traffic-disruption'),second=getDemoDecisionEvaluation('warehouse-overload');
+const serviceByPhase:Partial<Record<SimulationPhase,number>>={NORMAL:normal.counterfactual.baseline.serviceLevel*100,SURGE:surge.counterfactual.baseline.serviceLevel*100,WAREHOUSE_OVERLOAD:traffic.counterfactual.baseline.serviceLevel*100,DEGRADED:compound.counterfactual.baseline.serviceLevel*100,REROUTING:compound.counterfactual.arci.serviceLevel*100,RECOVERING:compound.counterfactual.arci.serviceLevel*100,SECOND_FAILURE:second.counterfactual.baseline.serviceLevel*100,REPLANNING:second.counterfactual.baseline.serviceLevel*100,RECOVERED:second.counterfactual.arci.serviceLevel*100};
+const serviceRecoverySeries=recoveryMetadata.map(point=>({...point,slaPercent:Number((serviceByPhase[point.phase]??point.slaPercent).toFixed(1))}));
+const SLA_MIN=Math.min(88,Math.floor(Math.min(...serviceRecoverySeries.map(point=>point.slaPercent))-2));
 const SLA_MAX=100;
 const TARGET_SLA=95;
 
@@ -39,7 +43,7 @@ export function RecoveryTrajectory({phase,stageProgress,currentSla}:{phase:Simul
   return <section className={`recovery-trajectory service-recovery ${position>0?'is-running':''} ${recovered?'is-complete':''}`} aria-label="執行後服務恢復曲線">
     <div className="trajectory-head">
       <div><small>SERVICE RECOVERY</small><h2>執行後服務恢復曲線</h2><p>ARCI 執行調度後，物流履約 SLA 隨事件、二次衝擊與重新規劃改變。</p></div>
-      <div className="recovery-kpi"><small>CURRENT SERVICE LEVEL</small><strong>{currentSla.toFixed(1)}<i>%</i></strong><span className={recovered?'is-restored':''}>{recovered?'SLA TARGET RESTORED':phase==='NORMAL'?'BASELINE':'RECOVERY IN PROGRESS'}</span></div>
+      <div className="recovery-kpi"><small>目前服務水準 <em>CURRENT SERVICE LEVEL</em></small><strong>{currentSla.toFixed(1)}<i>%</i></strong><span className={recovered?'is-restored':''}>{recovered?'SLA TARGET RESTORED':phase==='NORMAL'?'BASELINE':'RECOVERY IN PROGRESS'}</span></div>
     </div>
     <div className="service-chart-wrap">
       <svg className="service-chart" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={`情境履約 SLA 從 ${serviceRecoverySeries[0].slaPercent}% 下降、二次事件後再次下降，最終恢復至 ${serviceRecoverySeries.at(-1)!.slaPercent}%`}>

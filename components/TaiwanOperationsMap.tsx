@@ -1,20 +1,25 @@
-import { candidatesForPhase } from '@/simulation/scenario';
+import { decisionCandidatesFromEvaluation, engineEvaluationForPhase } from '@/simulation/enterpriseAdapter';
+import type { ScenarioEvaluation } from '@/domain/decision-engine';
 import { islandGeometry,logisticsRoutes,networkNodeAnchors,offshoreRoutes,routeAnchors,taiwanGeometry,westernCorridor } from '@/simulation/geography';
 import { segmentProgress } from '@/simulation/timeline';
 import type { CSSProperties } from 'react';
 import { OPERATIONAL_NODE_IDS, type CommerceSimulationState, type CommerceSnapshot, type NetworkNodeState, type RouteId } from '@/simulation/types';
 
-type Props={snapshot:CommerceSnapshot;state:CommerceSimulationState;stageProgress:number;onSelectNode:(id:string|null)=>void};
+type Props={snapshot:CommerceSnapshot;state:CommerceSimulationState;stageProgress:number;onSelectNode:(id:string|null)=>void;evaluation?:ScenarioEvaluation};
 const routes=(Object.entries(logisticsRoutes) as Array<[RouteId,(typeof logisticsRoutes)[RouteId]]>).map(([id,route])=>({id,...route}));
 const routeCandidates=(phase:CommerceSimulationState['phase'])=>phase==='DECIDING'||phase==='REPLANNING';
 const routeExecuting=(phase:CommerceSimulationState['phase'])=>phase==='REROUTING'||phase==='UPDATED_EXECUTION';
 
-export function TaiwanOperationsMap({snapshot,state,stageProgress,onSelectNode}:Props){
-  const recommended=candidatesForPhase(state.phase).find(item=>item.recommended)?.id;
-  const visibleRoute=state.previewRoute??state.selectedRoute??(routeCandidates(state.phase)||routeExecuting(state.phase)?recommended:snapshot.activeRoute);
-  const selectedCandidate=candidatesForPhase(state.phase).find(item=>item.id===visibleRoute);
-  const hasTraffic=['WAREHOUSE_OVERLOAD','DEGRADED','DECIDING','REROUTING','RECOVERING'].includes(state.phase);
-  const hasWeather=['DEGRADED','DECIDING','REROUTING'].includes(state.phase);
+export function TaiwanOperationsMap({snapshot,state,stageProgress,onSelectNode,evaluation}:Props){
+  const activeEvaluation=evaluation??engineEvaluationForPhase(state.phase);
+  const candidates=decisionCandidatesFromEvaluation(activeEvaluation);
+  const recommended=candidates.find(item=>item.recommended)?.id;
+  const visibleRoute=state.previewRoute??state.selectedRoute??(evaluation||routeCandidates(state.phase)||routeExecuting(state.phase)?recommended:snapshot.activeRoute);
+  const selectedCandidate=candidates.find(item=>item.id===visibleRoute);
+  const evaluatedEvents=activeEvaluation.scenario.events;
+  const hasTraffic=['WAREHOUSE_OVERLOAD','DEGRADED','DECIDING','REROUTING','RECOVERING'].includes(state.phase)||evaluatedEvents.some(event=>event.type==='TRAFFIC_DISRUPTION');
+  const hasWeather=['DEGRADED','DECIDING','REROUTING'].includes(state.phase)||evaluatedEvents.some(event=>event.type==='WEATHER_DISRUPTION');
+  const affectedNodeIds=new Set(evaluatedEvents.flatMap(event=>event.type==='WEATHER_DISRUPTION'?event.affectedNodeIds:event.type==='NODE_FAILURE'?[event.nodeId]:[]));
   const secondShock=['SECOND_FAILURE','REPLANNING','UPDATED_EXECUTION'].includes(state.phase);
   const rerouting=['REROUTING','RECOVERING'].includes(state.phase);
   const updatedReroute=state.phase==='UPDATED_EXECUTION';
@@ -25,12 +30,11 @@ export function TaiwanOperationsMap({snapshot,state,stageProgress,onSelectNode}:
   const centralAnchor=networkNodeAnchors['warehouse-b'];
   return <section className={`operations-map phase-${state.phase.toLowerCase()} ${state.autoPaused?'is-paused':''}`} data-active-route={visibleRoute} aria-label="臺灣、澎湖、金門、馬祖與綠島同一地圖座標空間的履約網路">
     <div className="map-head"><div><span className="section-kicker">TAIWAN FULFILLMENT NETWORK</span><h2>全臺履約態勢 · Geographic Projection</h2></div><div className="map-mode"><span className="geometry-mark">{snapshot.networkKpis.nodeCount} / {OPERATIONAL_NODE_IDS.length} GEO NODES</span><span className="map-data-status">SCENARIO</span></div></div>
-    <div className="order-pressure network-summary"><small>ALL-NODE ORDER PRESSURE</small><strong>{snapshot.networkKpis.orderRate.toLocaleString()}<i>/min</i></strong><span><em style={{transform:`scaleX(${orderPressure})`}}/></span><dl><div><dt>SLA</dt><dd>{snapshot.networkKpis.onTimeRate}%</dd></div><div><dt>延遲</dt><dd>{snapshot.networkKpis.averageDelayHours}h</dd></div><div><dt>風險</dt><dd>{snapshot.networkKpis.riskExposure}/100</dd></div></dl><p>本島＋四組離島加權</p></div>
-    <div className="route-context"><small>ACTIVE CORRIDOR</small><strong>{selectedCandidate?.serviceName??routes.find(route=>route.id===visibleRoute)?.corridor}</strong><span>{selectedCandidate?.serviceMode??'西部物流走廊'} · ARCI estimate</span></div>
+    <div className="order-pressure network-summary"><small>全網訂單壓力</small><em className="metric-micro">ALL-NODE ORDER PRESSURE</em><strong>{snapshot.networkKpis.orderRate.toLocaleString()}<i>/h</i></strong><span><em style={{transform:`scaleX(${orderPressure})`}}/></span><dl><div><dt>SLA</dt><dd>{snapshot.networkKpis.onTimeRate}%</dd></div><div><dt>延遲</dt><dd>{snapshot.networkKpis.averageDelayHours}h</dd></div><div><dt>風險</dt><dd>{snapshot.networkKpis.riskExposure}/100</dd></div></dl><p>本島＋四組離島加權</p></div>
     <svg className="taiwan-map" viewBox="0 0 760 520" role="img" aria-label="以同一地圖座標空間呈現臺灣主島、澎湖、金門、馬祖與臺東以東的綠島">
       <defs>
-        <linearGradient id="sea-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#f8faf9"/><stop offset="1" stopColor="#edf3f1"/></linearGradient>
-        <linearGradient id="island-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fcfcf8"/><stop offset=".55" stopColor="#edf1ec"/><stop offset="1" stopColor="#e1e8e4"/></linearGradient>
+        <linearGradient id="sea-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#f1f0ec"/><stop offset="1" stopColor="#e7ece8"/></linearGradient>
+        <linearGradient id="island-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fffdf9"/><stop offset=".55" stopColor="#f0f1ec"/><stop offset="1" stopColor="#dfe6e1"/></linearGradient>
         <filter id="island-shadow" x="-40%" y="-20%" width="190%" height="170%"><feDropShadow dx="0" dy="12" stdDeviation="14" floodColor="#40504a" floodOpacity=".13"/></filter>
         <radialGradient id="rain-fill"><stop offset="0" stopColor="#4e8baa" stopOpacity=".25"/><stop offset="1" stopColor="#4e8baa" stopOpacity="0"/></radialGradient>
       </defs>
@@ -42,7 +46,7 @@ export function TaiwanOperationsMap({snapshot,state,stageProgress,onSelectNode}:
       <path className="west-plain" d={logisticsRoutes['route-a'].path}/>
       <g className="road-corridors" aria-hidden="true"><path d={logisticsRoutes['route-a'].path}/><path d={logisticsRoutes['route-b'].path}/></g>
       <g className="corridor-waypoints" aria-hidden="true">{westernCorridor.slice(1,-1).map(point=><g key={point.label} transform={`translate(${point.x} ${point.y})`}><circle r="2.4"/><text x="-9" y="-7">{point.label}</text></g>)}</g>
-      <g className={`weather-overlay ${hasWeather?'is-visible':''}`} style={{opacity:weatherStrength}} aria-hidden="true"><ellipse cx="394" cy="338" rx="82" ry="68" fill="url(#rain-fill)"/></g>
+      <g className={`weather-overlay ${hasWeather?'is-visible':''}`} style={{opacity:evaluation&&hasWeather?1:weatherStrength}} aria-hidden="true">{evaluation&&affectedNodeIds.size?[...affectedNodeIds].map(nodeId=>{const anchor=networkNodeAnchors[nodeId as keyof typeof networkNodeAnchors];return anchor?<ellipse key={nodeId} cx={anchor.x} cy={anchor.y} rx="72" ry="58" fill="url(#rain-fill)"/>:null}):<ellipse cx="394" cy="338" rx="82" ry="68" fill="url(#rain-fill)"/>}</g>
       <g className="route-network" aria-hidden="true">{routes.map((route,index)=>{
         const legacy=(route.id==='route-a'&&['REROUTING','RECOVERING','SECOND_FAILURE','REPLANNING','UPDATED_EXECUTION','RECOVERED'].includes(state.phase))||(route.id==='route-b'&&['SECOND_FAILURE','REPLANNING','UPDATED_EXECUTION','RECOVERED'].includes(state.phase));
         const executingRoute=(rerouting&&route.id==='route-b')||(updatedReroute&&route.id==='route-c');
@@ -59,7 +63,11 @@ export function TaiwanOperationsMap({snapshot,state,stageProgress,onSelectNode}:
       {snapshot.networkNodes.map(node=><MapNode key={node.id} node={node} anchor={networkNodeAnchors[node.id]} offshore={node.scope==='offshore'} selected={state.selectedNode===node.id} onSelect={()=>toggleNode(node.id)}/>) }
       <g className="map-scale" aria-hidden="true"><path d="M610 458h82"/><path d="M610 454v8M651 454v8M692 454v8"/><text x="610" y="476">0</text><text x="675" y="476">100 km</text></g>
     </svg>
-    <div className="map-disclosure">Natural Earth restored outline · offshore geometry and nodes share one responsive viewBox</div>
+    <footer className="map-footer">
+      <div className="route-context"><small>ACTIVE CORRIDOR</small><strong>{selectedCandidate?.serviceName??routes.find(route=>route.id===visibleRoute)?.corridor}</strong><span>{selectedCandidate?.serviceMode??'常態配送骨幹'} · Traffic / rainfall sensitive</span></div>
+      <span className="map-footer-space" aria-hidden="true"/>
+      <div className="map-disclosure">Natural Earth geometry · operational simulation</div>
+    </footer>
   </section>;
 }
 

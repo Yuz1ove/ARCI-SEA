@@ -8,12 +8,12 @@ import { TaiwanOperationsMap } from './TaiwanOperationsMap';
 import { TopControlRail } from './TopControlRail';
 import { RecoveryTrajectory } from './RecoveryTrajectory';
 import { useScenarioState } from './ScenarioStateProvider';
-import { candidatesForPhase } from '@/simulation/scenario';
+import { decisionCandidatesFromEvaluation } from '@/simulation/enterpriseAdapter';
 import type { SimulationPhase } from '@/simulation/types';
 
 export function CommerceConsole(){
-  const {state,snapshot,stageProgress,demoProgress,controls,goTo,previewRoute,selectRoute,selectNode,policySnapshot}=useScenarioState();
-  const candidates=candidatesForPhase(state.phase);
+  const {state,snapshot,stageProgress,demoProgress,controls,goTo,previewRoute,selectRoute,selectNode,engineEvaluation}=useScenarioState();
+  const candidates=decisionCandidatesFromEvaluation(engineEvaluation);
   const candidatePhase=state.phase==='DECIDING'||state.phase==='REPLANNING';
   const focusedRoute=state.previewRoute??state.selectedRoute??(candidatePhase?candidates.find(item=>item.recommended)?.id:snapshot.activeRoute);
   const renderCount=useRef(0);
@@ -46,7 +46,7 @@ export function CommerceConsole(){
       <section className="hero-heading"><div><span>SEA COMMERCE OPERATIONS</span><h1>{snapshot.headline}</h1></div><p><i/> {snapshot.summary}</p></section>
       <Profiler id="control-center" onRender={countRender}><section className="control-center">
           <TaiwanOperationsMap snapshot={snapshot} state={state} stageProgress={stageProgress} onSelectNode={selectNode}/>
-          <OperationsPanel phase={state.phase} snapshot={snapshot} policySnapshot={policySnapshot} stageProgress={stageProgress} previewRoute={state.previewRoute} selectedRoute={state.selectedRoute} onPreview={previewRoute} onSelect={selectRoute} onExecute={state.phase==='DEGRADED'?controls.runArci:controls.executeRoute} onReplan={controls.replan}/>
+          <OperationsPanel phase={state.phase} snapshot={snapshot} engineEvaluation={engineEvaluation} stageProgress={stageProgress} previewRoute={state.previewRoute} selectedRoute={state.selectedRoute} onPreview={previewRoute} onSelect={selectRoute} onExecute={state.phase==='DEGRADED'?controls.runArci:controls.executeRoute} onReplan={controls.replan}/>
         </section></Profiler>
       <RecoveryTrajectory phase={state.phase} stageProgress={stageProgress} currentSla={snapshot.onTimeRate}/>
     </div>

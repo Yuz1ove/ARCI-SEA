@@ -1,10 +1,10 @@
-import { primaryCandidates, replanCandidates } from './scenario';
+import { decisionCandidatesFromEvaluation, engineEvaluationForPhase } from './enterpriseAdapter';
 import type { DecisionCandidate, DecisionRuntime, SimulationPhase } from './types';
 
 export class SimulatedDecisionRuntime implements DecisionRuntime {
   async evaluate(phase:SimulationPhase):Promise<DecisionCandidate[]> {
     await Promise.resolve();
-    return phase === 'SECOND_FAILURE' || phase === 'REPLANNING' || phase === 'UPDATED_EXECUTION' || phase === 'RECOVERED' ? replanCandidates : primaryCandidates;
+    return decisionCandidatesFromEvaluation(engineEvaluationForPhase(phase));
   }
 }
 
