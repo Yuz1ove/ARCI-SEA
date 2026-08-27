@@ -14,5 +14,6 @@ export * from './scenarios';
 export * from './simulation';
 export * from './state';
 export * from './types';
+export * from './v3';
 export { taiwanMarket } from './markets/taiwan';
 export { syntheticMarket } from './markets/synthetic';

@@ -1,3 +1,5 @@
+import type { ArciCoreV3Evaluation } from './v3/types';
+
 export type NodeId = string;
 export type EdgeId = string;
 export type CarrierMode = 'road' | 'air' | 'sea';
@@ -79,8 +81,11 @@ export interface CommerceNetworkState {
 
 export interface CommerceDigitalTwin {
   marketId: string;
-  initialState: CommerceNetworkState;
-  currentState: CommerceNetworkState;
+  seed: string;
+  initialState: Readonly<CommerceNetworkState>;
+  currentState: Readonly<CommerceNetworkState>;
+  stateHistory: readonly Readonly<CommerceNetworkState>[];
+  transitionEventIds: readonly string[];
   stateSnapshotId: string;
 }
 
@@ -256,6 +261,7 @@ export interface ScenarioEvaluation {
   governance: GovernanceDecision;
   audit: DecisionAuditEntry[];
   decisionRecord: DecisionRecord;
+  v3: ArciCoreV3Evaluation;
   calculationLatencyMs: number;
   provenance: {
     operationalParameters: DataProvenance;

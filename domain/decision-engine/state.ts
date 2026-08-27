@@ -8,9 +8,16 @@ export function createInitialState(market:MarketConfig,seed:string):CommerceNetw
   return {marketId:market.marketId,timeMinutes:0,nodes,edges,demandMultiplier:1,weatherSeverity:0,trafficSeverity:0,slaPressure:0,seed,appliedEventIds:[]};
 }
 
-const cloneState=(state:CommerceNetworkState):CommerceNetworkState=>({
+export const cloneCommerceState=(state:CommerceNetworkState):CommerceNetworkState=>({
   ...state,nodes:Object.fromEntries(Object.entries(state.nodes).map(([id,node])=>[id,{...node,carrierAvailability:{...node.carrierAvailability}}])),edges:Object.fromEntries(Object.entries(state.edges).map(([id,edge])=>[id,{...edge}])),appliedEventIds:[...state.appliedEventIds],
 });
+
+const deepFreezeState=(state:CommerceNetworkState):Readonly<CommerceNetworkState>=>{
+  for(const node of Object.values(state.nodes)){Object.freeze(node.carrierAvailability);Object.freeze(node)}
+  for(const edge of Object.values(state.edges)) Object.freeze(edge);
+  Object.freeze(state.nodes);Object.freeze(state.edges);Object.freeze(state.appliedEventIds);
+  return Object.freeze(state);
+};
 
 function finalizeState(state:CommerceNetworkState):CommerceNetworkState{
   const parameters=DECISION_ENGINE_PARAMETERS.state;
@@ -28,7 +35,7 @@ function finalizeState(state:CommerceNetworkState):CommerceNetworkState{
 
 export function applyCommerceEvent(current:CommerceNetworkState,event:CommerceEvent):CommerceNetworkState{
   const impact=DECISION_ENGINE_PARAMETERS.eventImpact;
-  const state=cloneState(current);
+  const state=cloneCommerceState(current);
   state.timeMinutes=Math.max(state.timeMinutes,event.atMinute);
   state.appliedEventIds.push(event.id);
   if(event.type==='DEMAND_SURGE') state.demandMultiplier=Math.max(state.demandMultiplier,event.multiplier);
@@ -88,6 +95,35 @@ export function buildScenarioState(market:MarketConfig,events:CommerceEvent[],se
 }
 
 export function createCommerceDigitalTwin(market:MarketConfig,events:CommerceEvent[],seed:string){
-  const {initialState,state,stateSnapshotId}=buildScenarioState(market,events,seed);
-  return {marketId:market.marketId,initialState,currentState:state,stateSnapshotId};
+  const initialState=createInitialState(market,seed);
+  const history:CommerceNetworkState[]=[initialState];
+  let current=initialState;
+  for(const event of [...events].sort((a,b)=>a.atMinute-b.atMinute||a.id.localeCompare(b.id))){
+    current=applyCommerceEvent(current,event);
+    history.push(current);
+  }
+  const frozenHistory=history.map(item=>deepFreezeState(cloneCommerceState(item)));
+  const currentState=frozenHistory.at(-1)!;
+  const stateSnapshotId=`STATE-${stableHash(JSON.stringify(currentState)).toUpperCase()}`;
+  return Object.freeze({marketId:market.marketId,seed,initialState:frozenHistory[0],currentState,stateHistory:Object.freeze(frozenHistory),transitionEventIds:Object.freeze([...events].sort((a,b)=>a.atMinute-b.atMinute||a.id.localeCompare(b.id)).map(event=>event.id)),stateSnapshotId});
+}
+
+export function injectDigitalTwinScenario(twin:ReturnType<typeof createCommerceDigitalTwin>,event:CommerceEvent){
+  const next=applyCommerceEvent(twin.currentState as CommerceNetworkState,event);
+  const frozenNext=deepFreezeState(next);
+  const stateHistory=Object.freeze([...twin.stateHistory,frozenNext]);
+  return Object.freeze({...twin,currentState:frozenNext,stateHistory,transitionEventIds:Object.freeze([...twin.transitionEventIds,event.id]),stateSnapshotId:`STATE-${stableHash(JSON.stringify(frozenNext)).toUpperCase()}`});
+}
+
+export function compareDigitalTwinTrajectories(left:ReturnType<typeof createCommerceDigitalTwin>,right:ReturnType<typeof createCommerceDigitalTwin>){
+  const leftState=left.currentState,rightState=right.currentState;
+  const backlog=(state:Readonly<CommerceNetworkState>)=>Object.values(state.nodes).reduce((total,node)=>total+node.backlog,0);
+  const service=(state:Readonly<CommerceNetworkState>)=>Object.values(state.nodes).reduce((total,node)=>total+node.serviceLevel,0)/Math.max(1,Object.keys(state.nodes).length);
+  return {
+    sameInitialSnapshot:JSON.stringify(left.initialState)===JSON.stringify(right.initialState),
+    sameFinalSnapshot:left.stateSnapshotId===right.stateSnapshotId,
+    backlogDelta:backlog(rightState)-backlog(leftState),
+    serviceLevelDelta:service(rightState)-service(leftState),
+    transitionCountDelta:right.transitionEventIds.length-left.transitionEventIds.length,
+  };
 }

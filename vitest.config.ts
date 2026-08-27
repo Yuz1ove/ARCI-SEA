@@ -5,6 +5,8 @@ export default defineConfig({
   resolve:{alias:{'@':fileURLToPath(new URL('./',import.meta.url))}},
   test: {
     environment: 'node',
+    fileParallelism: false,
+    maxWorkers: 1,
     include: ['simulation/**/*.test.ts', 'data/**/*.test.ts', 'domain/**/*.test.ts', 'lib/**/*.test.ts'],
   },
 });
